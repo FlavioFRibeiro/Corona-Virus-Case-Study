@@ -1,0 +1,153 @@
+
+-- COVID-19 Total Deaths and Death Ratio Worldwise
+SELECT SUM(new_cases) AS total_cases, SUM(cast(new_deaths AS INT)) AS total_deaths, SUM(cast(new_deaths AS INT))/SUM(New_Cases)*100 AS DeathPercentage
+FROM master..covid_deaths
+WHERE continent is not null 
+ORDER BY 1,2
+
+-- Death Count broken in Continents
+SELECT location, SUM(cast(new_deaths AS INT)) AS TotalDeathCount
+FROM master..covid_deaths
+WHERE continent is null 
+and location not in ('World', 'European Union', 'International')
+GROUP by location
+ORDER BY TotalDeathCount DESC
+
+-- Countries with the highest rate of infection
+SELECT Location, Population, MAX(total_cases) AS HighestInfectionCount,  Max((total_cases/population))*100 AS PercentPopulationInfected
+FROM master..covid_deaths
+GROUP BY Location, Population
+ORDER by PercentPopulationInfected DESC
+
+-- Population Infection per day per Country
+SELECT Location, Population,date, MAX(total_cases) AS HighestInfectionCount,  Max((total_cases/population))*100 AS PercentPopulationInfected
+FROM master..covid_deaths
+GROUP BY Location, Population, date
+ORDER BY PercentPopulationInfected DESC
+
+-- Death Count broken by Country
+SELECT location, SUM(cast(new_deaths AS INT)) AS TotalDeathCount
+FROM master..covid_deaths
+WHEREcontinent is NOT null 
+and location not in ('World', 'European Union', 'International')
+GROUP BY location
+ORDER BY TotalDeathCount DESC
+
+-- Contries Deaths per Million
+SELECT location, 
+MAX(population) AS Population,
+SUM(cast(new_deaths AS INT)) AS Total_Deaths,
+(SUM(cast(new_deaths AS INT)) / MAX(population))*1000000 AS Death_Ratio
+FROM master..covid_deaths
+WHERE continent IS NOT NULL
+GROUP by location
+ORDER BY 4 DESC
+
+
+----------------- COVID VACCINATIONS -------------------
+
+```sql
+----- Percentage of fully vaccinated, people vaccinated and percentages of that
+WITH PopvsVac (Continent, Location,Date, Population, New_Vaccinations, Total_People_Vaccinated, Total_People_Fully_Vaccinated)
+AS
+(
+	SELECT Dea.continent, Dea.location, Dea.date, Dea.population, 
+	   Vac.new_vaccinations,
+
+	   SUM(CONVERT(INT, vac.new_vaccinations)) OVER (PARTITION BY dea.location 
+	   ORDER BY dea.location, dea.date) AS Percentage_Population_At_Lease_1_Jab, --SUM of New Vaccines Given
+
+	   SUM(CONVERT(BIGINT, vac.people_fully_vaccinated)) OVER (PARTITION BY dea.location 
+	   ORDER BY dea.location, dea.date) AS Total_People_Fully_Vaccinated
+	   
+	FROM master..covid_deaths Dea
+
+	JOIN master..covid_vaccinations Vac
+	ON Dea.location = Vac.location
+	AND Dea.date = Vac.date
+
+	WHERE Dea.continent IS NOT NULL
+)
+SELECT *, (Total_People_Vaccinated/Population)*100 AS Percentage_Population_At_Lease_1_Jab, (Total_People_Fully_Vaccinated/Population)*100 as Population_Fully_Vaccinated FROM PopvsVac 
+ORDER BY 2,3
+```
+
+After that, I went ahead and queried the percentage of population fully vaccinated per country day by day
+
+```sql
+--Percentage Population Fully Vaccinated
+SELECT location, date, population, CAST(people_fully_vaccinated AS INT) AS Population_Fully_Vaccinated,
+
+((CAST(people_fully_vaccinated AS INT))/population)*100 AS Percentage_People_Fully_Vaccinated
+
+FROM master..covid_vaccinations_with_pop
+WHERE continent IS NOT NULL
+ORDER BY 1,2
+```
+
+And also queried the total of population fully vaccinated by country
+
+
+---- SUM of People Fully Vaccinated
+
+SELECT location, 
+
+MAX(CAST(people_fully_vaccinated AS BIGINT)) AS People_Fully_Vaccinated
+
+FROM master..covid_vaccinations
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY 2 DESC
+```
+
+After that, I calculated the percentage of the population that is fully vaccinated against Covid-19 per country
+
+
+--- Percentage of Population FULLY Vaccinated per Contry
+
+SELECT location,
+
+MAX(population) AS Population,
+MAX(CAST(people_fully_vaccinated AS BIGINT))							AS Fully_Vaccinated,
+(MAX(CAST(people_fully_vaccinated AS BIGINT))/MAX(population))*100		AS Percentage_Fully_Vaccinated
+FROM master..covid_vaccinations_with_pop
+
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY 4 DESC
+```
+
+And in order to know which is the population partly and fully vaccinated, I had to know which percentage of the population had one jab, and which percentage of the population was already fully vaccinated per contry.
+
+```sql
+--Percemtage of people with one jab, and fully vaccinated
+
+SELECT location,
+
+MAX(population) AS Population,
+MAX(CAST(people_vaccinated AS BIGINT))								AS Vaccines_Applied,
+MAX(CAST(people_fully_vaccinated AS BIGINT))					AS People_Fully_Vaccinated,
+
+((MAX(CAST(people_vaccinated AS BIGINT)))-(MAX(CAST(people_fully_vaccinated AS BIGINT))))		AS People_Firtst_Jab,
+(((MAX(CAST(people_vaccinated AS BIGINT)))-(MAX(CAST(people_fully_vaccinated AS BIGINT)))) / MAX(population))*100 AS Percentage_Population_Partially_immunized,
+
+(MAX(CAST(people_fully_vaccinated AS BIGINT))/MAX(population))*100		AS Percentage_Fully_Vaccinated
+
+FROM master..covid_vaccinations_with_pop
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY 7 DESC
+```
+
+To finish the data analysis on this Dataset, I queried which was the percentage of the population fully vaccinated per country, as shown on the query below.
+
+```sql
+SELECT location,
+MAX(population) AS Population,
+MAX(CAST(people_fully_vaccinated AS BIGINT))													AS People_Fully_Vaccinated,
+(MAX(CAST(people_fully_vaccinated AS BIGINT))/MAX(population))*100		AS Percentage_Fully_Vaccinated
+FROM master..covid_vaccinations_with_pop
+WHERE continent is null 
+AND location NOT IN ('European Union', 'International')
+GROUP BY location
+ORDER BY 1
